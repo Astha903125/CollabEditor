@@ -1,0 +1,101 @@
+name: CI/CD Pipeline
+
+# Triggers: every push to main and every pull request targeting main
+# For PRs: runs tests and blocks merge if they fail
+# For pushes to main: tests + deploy
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Job 1: Test the backend ────────────────────────────────────────────────
+  test-server:
+    name: Server tests
+    runs-on: ubuntu-latest
+
+    services:
+      # GitHub Actions spins up a real MongoDB container for the test run
+      # This is much better than mocking — tests use the real DB driver
+      mongodb:
+        image: mongo:6
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "echo 'db.runCommand(\"ping\").ok' | mongosh localhost:27017/test --quiet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: server
+        run: npm ci  # ci = exact versions from package-lock.json, no surprises
+
+      - name: Run tests
+        working-directory: server
+        env:
+          MONGODB_URI: mongodb://localhost:27017/collabcode_test
+          JWT_SECRET: ci_test_secret_key_not_used_in_production
+          NODE_ENV: test
+        run: npm test -- --forceExit --detectOpenHandles
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          working-directory: server
+
+  # ── Job 2: Build the frontend ──────────────────────────────────────────────
+  build-client:
+    name: Client build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install and build
+        working-directory: client
+        run: |
+          npm ci
+          npm run build  # fails if any TypeScript/lint errors
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
+
+  # ── Job 3: Deploy (only on push to main) ──────────────────────────────────
+  deploy:
+    name: Deploy to Render + Vercel
+    runs-on: ubuntu-latest
+    needs: [test-server, build-client]  # only runs if both above pass
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Trigger Render deploy via webhook (set RENDER_DEPLOY_HOOK in GitHub secrets)
+      - name: Deploy backend to Render
+        run: curl -s "${{ secrets.RENDER_DEPLOY_HOOK }}"
+
+      # Vercel auto-deploys from GitHub — this just notifies it
+      - name: Notify Vercel
+        run: echo "Vercel auto-deploys from GitHub integration"

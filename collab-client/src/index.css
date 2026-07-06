@@ -1,0 +1,27 @@
+/* box-sizing: border-box — width includes padding and border.
+   Without this, a div with width:100% + padding:10px overflows its container.
+   This is the single most important CSS reset. */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Prevent body from scrolling — Monaco handles its own scroll internally */
+body {
+  overflow: hidden;
+  background: #0f1117;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  color: #e2e8f0;
+}
+
+/* Remove default button/input styles */
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2d3149; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4f46e5; }

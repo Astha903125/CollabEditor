@@ -1,0 +1,66 @@
+version: '3.8'
+
+# docker-compose up  →  starts the entire stack in one command
+#
+# Services:
+#   server  — Node.js backend (Express + Socket.io + ShareDB)
+#   mongo   — MongoDB (document store, OT op log)
+#   redis   — Redis (Pub/Sub adapter, session cache)
+#
+# Why named volumes (mongo_data, redis_data)?
+# Named volumes persist data even if containers are stopped/removed.
+# Without volumes, all data is lost when the container stops.
+# The volume lives in Docker's managed storage, not your local fs.
+
+services:
+  server:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - MONGODB_URI=mongodb://mongo:27017/collabcode
+      - REDIS_URL=redis://redis:6379
+      # JWT_SECRET comes from the host environment (never hardcode secrets)
+      - JWT_SECRET=${JWT_SECRET}
+      - CLIENT_URL=http://localhost:5173
+      - NODE_ENV=production
+    depends_on:
+      mongo:
+        condition: service_healthy   # wait for Mongo to be ready
+      redis:
+        condition: service_healthy   # wait for Redis to be ready
+    # restart: unless-stopped — restarts if it crashes, but not if you manually stop it
+    # This is what keeps your app up overnight without manual intervention
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs   # logs from inside container visible on host
+
+  mongo:
+    image: mongo:6
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    # appendonly yes = write every op to disk (AOF persistence)
+    # Without this, Redis data is lost on restart (pure in-memory)
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  mongo_data:   # MongoDB data persists across container restarts
+  redis_data:   # Redis AOF log persists across container restarts
