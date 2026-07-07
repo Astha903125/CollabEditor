@@ -21,7 +21,15 @@ const roomSchema = new mongoose.Schema({
   snapshots: [snapshotSchema],  // version history
   isPublic:  { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
+  
+  messages: [{
+  user:      { type: String },
+  color:     { type: String },
+  text:      { type: String },
+  time:      { type: String },
+  createdAt: { type: Date, default: Date.now }
+}]
 })
 
 // Index for fast roomId lookups — this field is queried on every join

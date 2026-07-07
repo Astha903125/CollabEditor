@@ -179,6 +179,15 @@ async function startServer() {
         io.to(roomId).emit('room-users', users)
 
         logger.info('User joined room', { username, roomId })
+
+        const room = await Room.findOne({ roomId })
+        if (room) {
+          socket.emit('load-document', room.content)
+          // Send last 50 messages to the joining user
+          if (room.messages?.length) {
+            socket.emit('chat-history', room.messages.slice(-50))
+          }
+        }
       } catch (err) {
         logger.error('join-room error', { error: err.message })
         socket.emit('error', 'Failed to join room')
@@ -195,10 +204,16 @@ async function startServer() {
     })
 
     // ── CHAT MESSAGE ─────────────────────────────────────────────────────────
-socket.on('chat-message', ({ roomId, ...msg }) => {
-  // Broadcast the chat message to everyone in the room
-  io.to(roomId).emit('chat-message', msg)
-})
+    socket.on('chat-message', async ({ roomId, user, color, text, time }) => {
+      // Broadcast to others
+      socket.to(roomId).emit('chat-message', { user, color, text, time })
+
+      // Persist to MongoDB
+      await Room.findOneAndUpdate(
+        { roomId },
+        { $push: { messages: { user, color, text, time } } }
+      )
+    })
     // ── CODE CHANGE ──────────────────────────────────────────────────────────
 
     // Fires on every keystroke from any client

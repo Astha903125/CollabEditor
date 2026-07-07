@@ -63,6 +63,10 @@ export default function EditorPage({ user, roomId, roomName, onLeave }) {
     socket.on('snapshot-saved', snap => {
       setSnapshots(prev => [...prev, snap])
     })
+    // Load initial document content when joining a room
+    socket.on('chat-history', (history) => {
+      setMessages(history)
+    })
 
     // Connection status
     socket.on('connect',    () => { setConnected(true);  setLatency(socket.io.engine.ping || 0) })
