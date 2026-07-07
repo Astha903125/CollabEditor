@@ -29,6 +29,7 @@ export default function EditorPage({ user, roomId, roomName, onLeave }) {
   // UI state
   const [panel,      setPanel]      = useState('output')
   const [output,     setOutput]     = useState('')
+  const [input, setInput] = useState('')
   const [running,    setRunning]    = useState(false)
   const [caretLine,  setCaretLine]  = useState(1)
   const [caretCol,   setCaretCol]   = useState(1)
@@ -81,6 +82,7 @@ export default function EditorPage({ user, roomId, roomName, onLeave }) {
     return () => {
       socket.off('room-users')
       socket.off('chat-message')
+      socket.off('chat-history')
       socket.off('language-update')
       socket.off('snapshot-saved')
       socket.off('connect')
@@ -168,7 +170,7 @@ export default function EditorPage({ user, roomId, roomName, onLeave }) {
     }
     socket.emit('chat-message', { roomId, ...msg })
     // Optimistically add to local messages
-    //setMessages(prev => [...prev, msg])
+    setMessages(prev => [...prev, msg])
     setChatInput('')
   }
 
@@ -179,7 +181,14 @@ export default function EditorPage({ user, roomId, roomName, onLeave }) {
     setOutput('')
     setPanel('output')
     const code = editorRef.current?.getValue() || ''
-    socket.emit('execute-code', { roomId, code, language })
+    console.log("Sending stdin:");
+    console.log(input);
+    socket.emit('execute-code', {
+    roomId,
+    code,
+    language,
+    stdin: input
+    })
 
     socket.once('execution-result', result => {
       setOutput(result.output + (result.error ? `\nERROR: ${result.error}` : '') + `\n\n${result.exitCode === 0 ? '✓' : '✗'} Exited with code ${result.exitCode}`)
@@ -213,40 +222,209 @@ export default function EditorPage({ user, roomId, roomName, onLeave }) {
       socket.emit('code-change', { roomId, content })
     }
   }
+  function needsInput(code, language) {
+  switch (language) {
+    case "cpp":
+      return /\bcin\s*>>|\bgetline\s*\(/.test(code);
 
+    case "python":
+      return /\binput\s*\(/.test(code);
+
+    case "java":
+      return /\bScanner\b|\bBufferedReader\b/.test(code);
+
+    case "javascript":
+    case "typescript":
+      return /process\.stdin|readline/.test(code);
+
+    case "go":
+      return /fmt\.Scan|fmt\.Scanf|bufio\.NewReader/.test(code);
+
+    case "rust":
+      return /stdin\(\)|read_line/.test(code);
+
+    default:
+      return false;
+  }
+}
   // ── Render panels ──────────────────────────────────────────────────────────
   const renderPanel = () => {
+    const currentCode = editorRef.current?.getValue() || "";
+    const showInput = needsInput(currentCode, language);
     switch (panel) {
 
       case 'output':
-        return (
-          <div style={s.panelPad}>
-            {running && (
-              <div style={s.runningBox}>
-                <div style={s.runningDot} />
-                <span style={{ fontSize: 12, color: '#94a3b8' }}>Executing in isolated sandbox…</span>
-              </div>
-            )}
-            {!running && !output && (
-              <div style={s.emptyOutput}>
-                <div style={{ fontSize: 28, marginBottom: 10 }}>▶</div>
-                <div style={{ fontSize: 13 }}>Click Run to execute</div>
-                <div style={{ fontSize: 11, marginTop: 6, color: '#374151' }}>
-                  Sandboxed child_process · SIGKILL timeout · temp file isolation
-                </div>
-              </div>
-            )}
-            {!running && output && (
-              <pre style={s.outputPre}>
-                {output.split('\n').map((line, i) => (
-                  <span key={i} style={{ color: line.startsWith('✓') ? '#10b981' : line.startsWith('✗') || line.startsWith('ERROR') ? '#ef4444' : '#94a3b8' }}>
-                    {line + '\n'}
-                  </span>
-                ))}
-              </pre>
-            )}
+  return (
+    <div
+      style={{
+        ...s.panelPad,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        gap: 16,
+      }}
+    >
+      {/* ================= INPUT ================= */}
+      {showInput && (
+      <div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            color: '#e5e7eb',
+            fontSize: 13,
+            fontWeight: 600,
+            marginBottom: 8,
+          }}
+        >
+          📥 Program Input
+        </div>
+
+        <div
+          style={{
+            border: '1px solid #374151',
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}
+        >
+          <MonacoEditor
+            height="130px"
+            language="plaintext"
+            theme="vs-dark"
+            value={input}
+            onChange={(value) => setInput(value || "")}
+            options={{
+              minimap: { enabled: false },
+              fontSize: 13,
+              lineNumbers: "on",
+              scrollBeyondLastLine: false,
+              wordWrap: "on",
+              automaticLayout: true,
+              glyphMargin: false,
+              folding: false,
+            }}
+          />
+        </div>
+      </div>
+    )}
+      {/* ================= STATUS ================= */}
+
+      {running && (
+        <div style={s.runningBox}>
+          <div style={s.runningDot} />
+          <span
+            style={{
+              fontSize: 12,
+              color: "#94a3b8",
+            }}
+          >
+            Running inside sandbox...
+          </span>
+        </div>
+      )}
+
+      {/* ================= EMPTY ================= */}
+
+      {!running && !output && (
+        <div style={s.emptyOutput}>
+          <div
+            style={{
+              fontSize: 34,
+              marginBottom: 10,
+            }}
+          >
+            ▶
           </div>
-        )
+
+          <div
+            style={{
+              fontSize: 13,
+            }}
+          >
+            Click Run to execute your program
+          </div>
+
+          <div
+            style={{
+              fontSize: 11,
+              marginTop: 8,
+              color: "#6b7280",
+            }}
+          >
+            Supports stdin • C++ • Java • Python • JavaScript • Go • Rust
+          </div>
+        </div>
+      )}
+
+      {/* ================= OUTPUT ================= */}
+
+      {!running && output && (
+        <>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div
+              style={{
+                color: "#e5e7eb",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              📤 Program Output
+            </div>
+
+            <button
+              onClick={() => navigator.clipboard.writeText(output)}
+              style={{
+                background: "#1f2937",
+                color: "#fff",
+                border: "1px solid #374151",
+                borderRadius: 6,
+                padding: "4px 10px",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              📋 Copy
+            </button>
+          </div>
+
+          <div
+            style={{
+              border: "1px solid #374151",
+              borderRadius: 8,
+              overflow: "hidden",
+              flex: 1,
+            }}
+          >
+            <MonacoEditor
+              height="220px"
+              language="plaintext"
+              theme="vs-dark"
+              value={output}
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                lineNumbers: "off",
+                fontSize: 13,
+                scrollBeyondLastLine: false,
+                wordWrap: "on",
+                automaticLayout: true,
+                glyphMargin: false,
+                folding: false,
+                cursorStyle: "line",
+              }}
+            />
+          </div>
+        </>
+      )}
+    </div>
+  )
 
       case 'chat':
         return (
@@ -257,18 +435,82 @@ export default function EditorPage({ user, roomId, roomName, onLeave }) {
                   No messages yet
                 </div>
               )}
-              {messages.map((m, i) => (
-                <div key={i} style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                    <div style={{ width: 18, height: 18, borderRadius: '50%', background: m.color || '#6366f1', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700 }}>
-                      {m.user[0].toUpperCase()}
+              {messages.map((m, i) => {
+                const mine = m.user === user.username;
+
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: mine ? "flex-end" : "flex-start",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        marginBottom: 3,
+                        flexDirection: mine ? "row-reverse" : "row",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: "50%",
+                          background: m.color || "#6366f1",
+                          fontSize: 9,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#fff",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {m.user[0].toUpperCase()}
+                      </div>
+
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: m.color || "#6366f1",
+                        }}
+                      >
+                        {m.user}
+                      </span>
+
+                      <span
+                        style={{
+                          fontSize: 10,
+                          color: "#64748b",
+                        }}
+                      >
+                        {m.time}
+                      </span>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: m.color || '#6366f1' }}>{m.user}</span>
-                    <span style={{ fontSize: 10, color: '#374151' }}>{m.time}</span>
+
+                    <div
+                      style={{
+                        background: mine ? "#6366f1" : "#1f2937",
+                        color: "#fff",
+                        padding: "8px 12px",
+                        borderRadius: 12,
+                        maxWidth: "75%",
+                        lineHeight: 1.5,
+                        fontSize: 12,
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {m.text}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8', paddingLeft: 24, lineHeight: 1.5 }}>{m.text}</div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={chatEndRef} />
             </div>
             <div style={s.chatInputRow}>

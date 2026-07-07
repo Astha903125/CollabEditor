@@ -278,11 +278,12 @@ async function startServer() {
 
     // ── CODE EXECUTION ───────────────────────────────────────────────────────
     // Sandboxed execution via child_process
-    socket.on('execute-code', async ({ roomId, code, language }) => {
+    socket.on('execute-code', async ({ roomId, code, language, stdin }) => {
+      console.log("Backend stdin:", JSON.stringify(stdin));
       try {
         const { execCode } = require('./utils/executor')
         socket.emit('execution-start')
-        const result = await execCode(code, language)
+        const result = await execCode(code, language, stdin)
         socket.emit('execution-result', result)
         // Broadcast to room so everyone sees the output
         socket.to(roomId).emit('execution-result', result)

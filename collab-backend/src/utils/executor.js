@@ -47,7 +47,8 @@ const RUNTIMES = {
   },
 }
 
-async function execCode(code, language) {
+async function execCode(code, language, stdin = "") {
+  console.log("Executor stdin:", JSON.stringify(stdin));
   const runtime = RUNTIMES[language]
   if (!runtime) return { output: '', error: `Language '${language}' not supported`, exitCode: 1 }
 
@@ -68,12 +69,12 @@ async function execCode(code, language) {
       }
 
       const [runCmd, runArgs] = runtime.run(binFile)
-      return runProcess(runCmd, runArgs, tmpDir, runtime.timeout)
+      return runProcess(runCmd, runArgs, tmpDir, runtime.timeout, stdin)
     }
 
     // Interpreted languages: run directly
     const args = [...(runtime.args || []), srcFile]
-    return runProcess(runtime.cmd, args, tmpDir, runtime.timeout)
+    return runProcess(runtime.cmd, args, tmpDir, runtime.timeout, stdin)
 
  } finally {
   // Windows may keep output.exe locked briefly after execution.
@@ -92,7 +93,7 @@ async function execCode(code, language) {
 }
 }
 
-function runProcess(cmd, args, cwd, timeout) {
+function runProcess(cmd, args, cwd, timeout, stdin = "") {
   return new Promise(resolve => {
     let stdout = ''
     let stderr = ''
@@ -103,8 +104,12 @@ function runProcess(cmd, args, cwd, timeout) {
       // Constrain environment — don't inherit server's env vars
       env: { PATH: process.env.PATH },
       // Pipe all I/O so we can capture it
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     })
+    if (stdin) {
+    proc.stdin.write(stdin);
+    }
+    proc.stdin.end();
 
     proc.stdout.on('data', d => { stdout += d.toString() })
     proc.stderr.on('data', d => { stderr += d.toString() })
