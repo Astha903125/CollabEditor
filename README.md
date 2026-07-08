@@ -2,7 +2,7 @@
 
 A production-grade collaborative code editor where multiple users can write and run code simultaneously in the same room, with changes synced in real time via WebSockets.
 
-**Live Demo:** [collabcode.vercel.app](https://collabcode.vercel.app)
+**Live Demo:** [collabcode.vercel.app](https://collab-editor-nine-sigma.vercel.app)
 
 ---
 
