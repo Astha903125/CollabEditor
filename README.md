@@ -15,9 +15,7 @@ A production-grade collaborative code editor where multiple users can write and 
 - Collaborative chat per room, persisted to MongoDB
 - Version snapshots — save and restore named checkpoints
 - JWT authentication with bcrypt password hashing
-- Rate-limited endpoints and input validation
-- Docker Compose for one-command local setup
-- GitHub Actions CI pipeline
+
 
 ---
 
